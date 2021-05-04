@@ -1,6 +1,4 @@
 
-
-#!/usr/bin/env nextflow
 /*
 Pipeline steps:
     1. Trimming
@@ -11,43 +9,77 @@ Pipeline steps:
 =======
 */
 
+/*
+ * PREPROCESSING - Build HISAT2 index 
+ */
 
-genome = channel
-          .fromPath(params.genome_path)
-
-process index
+if (params.genome_path)
 {
-input: 
-file gm from genome
+channel.fromPath(params.genome_path)
+           .ifEmpty { exit 1, "genome file not found: ${params.genome_path}" }
+           .set { genome_fasta}
 
-output:
-path 'SM_V9_21Feb' into index_ch
+}
+if (params.fasta_path)
 
-script:
-"""
-hisat2-build SM_V9_21Feb.fa SM_V9_21Feb
+{
+channel.fromFilePairs(params.fasta_path)
+           .ifEmpty { exit 1, "fasta file not found: ${params.fasta_path}" }
+           .set {reads}
 
-"""
 }
 
 
+process index
+{
+tag "$gm"
+input: 
+file gm from genome_fasta
 
-reads = channel
-          .fromFilePairs(params.fasta_path)
+output:
+file '*.ht2' into index_ch
 
-process fastqc
+
+script:
+"""
+hisat2-build ${gm} ${gm}
+
+"""
+} 
+
+process fastqc_trim
 
 {
 input:
-    tuple val(sampleID), path(files) from reads
+tuple val(sampleID), path(files) from reads
+
+output:
+tuple val(sampleID), file("*val_?.fq") into trimmed_reads_hisat2
 
 script:
 
 """
 trim_galore --fastqc --paired ${files[0]} ${files[1]}
 
- 
 """
 
+}
+
+
+
+process hisat2
+{
+
+input:
+val(index) from index_ch
+tuple val(name), file(trimmed_reads) from trimmed_reads_hisat2
+
+script:
+
+
+"""
+echo ${name}
+echo ${index}
+"""
 }
 
